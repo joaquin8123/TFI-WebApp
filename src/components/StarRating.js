@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 
-const StarRating = ({ serviceId, currentRating, onRate }) => {
+const StarRating = ({ storeId, serviceId, currentRating, onRate }) => {
   const [hoveredRating, setHoveredRating] = useState(0);
 
   return (
@@ -9,11 +9,13 @@ const StarRating = ({ serviceId, currentRating, onRate }) => {
         <span
           key={star}
           className={`cursor-pointer ${
-            (hoveredRating || currentRating) >= star ? 'text-yellow-500' : 'text-gray-300'
+            (hoveredRating || currentRating) >= star
+              ? "text-yellow-500"
+              : "text-gray-300"
           }`}
           onMouseEnter={() => setHoveredRating(star)}
           onMouseLeave={() => setHoveredRating(0)}
-          onClick={() => onRate(serviceId, star)}
+          onClick={() => onRate(storeId, serviceId, star)}
         >
           ★
         </span>

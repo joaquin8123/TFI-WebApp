@@ -1,45 +1,69 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Header from "../components/Header";
 import ServicesTable from "../components/ServicesTable";
 import { useNavigate } from "react-router-dom";
+import { getServicesByUserId } from "../service/userService";
+import { createReview } from "../service/reviewService";
+import { toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 const MyServicesPage = () => {
-  const [services, setServices] = useState([
-    {
-      id: 1,
-      shop: "Taller Juan",
-      services: "Cambio de aceite",
-      amount: 1500,
-      date: "2024-12-01",
-      status: "finalizado",
-      rating: null,
-    },
-    {
-      id: 2,
-      shop: "AutoFix Rosario",
-      services: "Revisión general",
-      amount: 5000,
-      date: "2024-11-30",
-      status: "pendiente",
-      rating: null,
-    },
-  ]);
+  const [services, setServices] = useState([]);
+  const navigate = useNavigate();
 
-  const handleRateService = (serviceId, rating) => {
+  useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        const userId = localStorage.getItem("userId");
+        const { services } = await getServicesByUserId(parseInt(userId));
+
+        const formattedServices = services.map((service) => ({
+          id: service.serviceId,
+          shop: service.storeName,
+          services: service.serviceName,
+          amount: parseFloat(service.servicePrice),
+          date: new Date(service.date).toLocaleDateString(),
+          status: service.status.toLowerCase(),
+          rating: service.rating,
+          storeId: service.store_id,
+        }));
+        setServices(formattedServices);
+      } catch (error) {
+        console.error("Error al obtener los servicios:", error);
+        alert("No se pudieron cargar los servicios.");
+      }
+    };
+
+    fetchServices();
+  }, []);
+
+  const handleRateService = async (storeId, serviceId, rating) => {
     setServices((prevServices) =>
       prevServices.map((service) =>
         service.id === serviceId ? { ...service, rating } : service
       )
     );
-    alert(`Has valorado el servicio ${serviceId} con ${rating} estrellas.`);
+    const userId = localStorage.getItem("userId");
+    await createReview(storeId, parseInt(userId), serviceId, rating);
+    toast.success("¡Valoración realizada con éxito!", {
+      position: "top-right",
+      autoClose: 3000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+    });
   };
-
-  const navigate = useNavigate();
 
   return (
     <div className="flex flex-col h-screen">
       <Header
-        onLogout={() => alert("Cerrar Sesión")}
+        onLogout={() => {
+          localStorage.removeItem("userId");
+          localStorage.removeItem("token");
+          localStorage.removeItem("storeId");
+          navigate("/");
+        }}
         onUpdateAccount={() => alert("Actualizar Datos")}
       />
       <ServicesTable services={services} onRateService={handleRateService} />

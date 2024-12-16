@@ -6,11 +6,19 @@ import "react-datepicker/dist/react-datepicker.css";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { getCityByName } from "../service/cityService";
 import { getStoreByCityId } from "../service/storeService";
+import {
+  getOccupiedDays,
+  createReservation,
+} from "../service/reservationService";
+import { toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import { useNavigate } from "react-router-dom";
 
 const MainPage = () => {
+  const navigate = useNavigate();
   const [locationInput, setLocationInput] = useState("");
   const [viewport, setViewport] = useState({
-    latitude: -34.6037, // Buenos Aires inicial
+    latitude: -34.6037,
     longitude: -58.3816,
     zoom: 12,
   });
@@ -19,17 +27,48 @@ const MainPage = () => {
   const [selectedDate, setSelectedDate] = useState(null);
   const [showReservation, setShowReservation] = useState(false);
   const [excludedDates, setExcludedDates] = useState([]);
+  const [storesWithDates, setStoresWithDates] = useState({});
+
+  const loadBuenosAiresStores = async () => {
+    try {
+      const buenosAires = await getCityByName("Buenos Aires");
+      if (buenosAires) {
+        const stores = await getStoreByCityId(buenosAires.id);
+
+        const storesOccupiedDates = {};
+        await Promise.all(
+          stores.map(async (store) => {
+            try {
+              const occupiedDaysResponse = await getOccupiedDays(
+                store.id,
+                store.serviceId
+              );
+              const excludedDates = occupiedDaysResponse.days.map((dateStr) => {
+                const date = new Date(dateStr);
+                date.setHours(0, 0, 0, 0);
+                return date;
+              });
+              storesOccupiedDates[store.id] = excludedDates;
+            } catch (error) {
+              console.error(
+                `Error al obtener días ocupados para store ${store.id}:`,
+                error
+              );
+              storesOccupiedDates[store.id] = [];
+            }
+          })
+        );
+
+        setStoresWithDates(storesOccupiedDates);
+        setStore(stores);
+      }
+    } catch (error) {
+      console.error("Error loading Buenos Aires stores:", error);
+    }
+  };
 
   useEffect(() => {
-    // Generar fechas de la próxima semana para excluirlas
-    const today = new Date();
-    const nextWeek = [];
-    for (let i = 1; i <= 7; i++) {
-      const date = new Date(today);
-      date.setDate(today.getDate() + i);
-      nextWeek.push(date);
-    }
-    setExcludedDates(nextWeek);
+    loadBuenosAiresStores();
   }, []);
 
   const handleSearch = async () => {
@@ -42,6 +81,32 @@ const MainPage = () => {
         zoom: 13,
       });
       const stores = await getStoreByCityId(cityId);
+
+      const storesOccupiedDates = {};
+      await Promise.all(
+        stores.map(async (store) => {
+          try {
+            const occupiedDaysResponse = await getOccupiedDays(
+              store.store_id,
+              store.serviceId
+            );
+            const excludedDates = occupiedDaysResponse.days.map((dateStr) => {
+              const date = new Date(dateStr);
+              date.setHours(0, 0, 0, 0);
+              return date;
+            });
+            storesOccupiedDates[store.store_id] = excludedDates;
+          } catch (error) {
+            console.error(
+              `Error al obtener días ocupados para store ${store.store_id}:`,
+              error
+            );
+            storesOccupiedDates[store.store_id] = [];
+          }
+        })
+      );
+
+      setStoresWithDates(storesOccupiedDates);
       setStore(stores);
     } else {
       alert("No hay información disponible para esta localidad");
@@ -51,15 +116,82 @@ const MainPage = () => {
   const handleReserve = (store) => {
     setSelectedShop(store);
     setShowReservation(true);
+    const storeDates = storesWithDates[store.store_id] || [];
+    setExcludedDates(storeDates);
+  };
+
+  const handleCreateReservation = async () => {
+    if (selectedDate && selectedShop) {
+      try {
+        const userId = localStorage.getItem("userId");
+        const reservationData = {
+          userId: parseInt(userId),
+          storeId: selectedShop.id,
+          serviceId: selectedShop.serviceId,
+          date: selectedDate.toISOString(),
+          status: "PENDING",
+        };
+        await createReservation(reservationData);
+        toast.success("¡Reserva creada exitosamente!", {
+          position: "top-right",
+          autoClose: 3000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
+        setShowReservation(false);
+        setSelectedDate(null);
+
+        // Actualizar las fechas ocupadas
+        const occupiedDaysResponse = await getOccupiedDays(
+          selectedShop.store_id,
+          selectedShop.serviceId
+        );
+        const newExcludedDates = occupiedDaysResponse.days.map((dateStr) => {
+          const date = new Date(dateStr);
+          date.setHours(0, 0, 0, 0);
+          return date;
+        });
+        setExcludedDates(newExcludedDates);
+      } catch (error) {
+        console.error("Error al crear la reserva:", error);
+        toast.error(
+          "Error al crear la reserva. Por favor, intente nuevamente.",
+          {
+            position: "top-right",
+            autoClose: 3000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          }
+        );
+      }
+    } else {
+      toast.warning("Por favor, seleccione una fecha válida.", {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+    }
   };
 
   return (
     <div className="flex flex-col h-screen">
-      {/* Header */}
-      <Header onLogout={() => alert("Cerrar Sesión")} />
+      <Header
+        onLogout={() => {
+          localStorage.removeItem("userId");
+          localStorage.removeItem("token");
+          localStorage.removeItem("storeId");
+          navigate("/");
+        }}
+      />
 
       <div className="flex w-full h-full">
-        {/* Panel Izquierdo */}
         <div className="w-1/4 bg-gray-100 p-4 overflow-y-auto">
           <h1 className="text-2xl mb-4">Buscar Localidad</h1>
           <input
@@ -76,10 +208,9 @@ const MainPage = () => {
             Buscar
           </button>
 
-          {/* Lista de Talleres */}
           <div className="mt-4">
             {stores.map((store) => (
-              <div key={store.id} className="border-b pb-2 mb-2">
+              <div key={store.store_id} className="border-b pb-2 mb-2">
                 <h3 className="font-bold">{store.name}</h3>
                 <p>{store.description}</p>
                 <div className="flex items-center">
@@ -107,7 +238,6 @@ const MainPage = () => {
           </div>
         </div>
 
-        {/* Mapa */}
         <div className="w-3/4 relative">
           <Map
             {...viewport}
@@ -118,7 +248,7 @@ const MainPage = () => {
           >
             {stores.map((store) => (
               <Marker
-                key={store.id}
+                key={store.store_id}
                 latitude={store.latitude}
                 longitude={store.longitude}
                 anchor="center"
@@ -162,7 +292,6 @@ const MainPage = () => {
             )}
           </Map>
 
-          {/* Ventana de Reservar Turno */}
           {showReservation && (
             <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
               <div className="bg-white p-6 rounded shadow-lg">
@@ -174,9 +303,12 @@ const MainPage = () => {
                   selected={selectedDate}
                   onChange={(date) => setSelectedDate(date)}
                   className="border p-2 w-full mb-4"
-                  minDate={new Date()} // Deshabilitar fechas anteriores a hoy
-                  excludeDates={excludedDates} // Fechas excluidas
+                  minDate={new Date()}
+                  excludeDates={excludedDates}
                   placeholderText="Seleccione una fecha"
+                  dateFormat="dd/MM/yyyy"
+                  showTimeSelect={false}
+                  isClearable={true}
                 />
                 <div className="flex justify-end space-x-4">
                   <button
@@ -186,14 +318,7 @@ const MainPage = () => {
                     Cancelar
                   </button>
                   <button
-                    onClick={() => {
-                      if (selectedDate) {
-                        alert(`Turno reservado para ${selectedDate}`);
-                        setShowReservation(false);
-                      } else {
-                        alert("Por favor, seleccione una fecha válida.");
-                      }
-                    }}
+                    onClick={handleCreateReservation}
                     className="bg-blue-500 text-white px-4 py-2 rounded"
                   >
                     Confirmar

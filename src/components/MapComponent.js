@@ -32,7 +32,7 @@ const MapComponent = ({ viewport, onViewportChange, shops, selectedShop, onSelec
       <Map
         {...viewport}
         ref={mapRef}
-        mapboxAccessToken="pk.eyJ1Ijoiam9hcXVpbjgxMjMiLCJhIjoiY20zdjJ3MW4yMHF4cDJpbzkybHh4dTF4NyJ9.lbLFSbOrPgdgUhD4chKCgg"
+        mapboxAccessToken={process.env.TOKEN_MAPBOX}
         style={{ width: '100%', height: '100%' }}
         onMove={(evt) => onViewportChange(evt.viewState)}
         mapStyle="mapbox://styles/mapbox/streets-v11"

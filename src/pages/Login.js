@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { jwtDecode } from "jwt-decode";
 
 const Login = ({ onLogin }) => {
   const [username, setUsername] = useState("");
@@ -9,7 +10,6 @@ const Login = ({ onLogin }) => {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    console.log("asd");
     try {
       const response = await fetch("http://localhost:3002/auth/login", {
         method: "POST",
@@ -26,12 +26,18 @@ const Login = ({ onLogin }) => {
         throw new Error("Error en la solicitud");
       }
 
-      const result = await response.json(); // Convierte la respuesta a JSON
+      const result = await response.json();
 
       if (result.success && result.data && result.data.token) {
-        console.log("result.data.token", result.data.token);
-        //onLogin(result.data.token); // Usa el token
-        navigate("/home"); // Redirige a la página principal
+        localStorage.setItem("userId", result.data.clientId);
+        localStorage.setItem("token", result.data.token);
+        localStorage.setItem("storeId", result.data.storeId);
+        const decodedToken = jwtDecode(result.data.token);
+        if (decodedToken.role === "ADMIN") {
+          navigate("/admin");
+        } else {
+          navigate("/home");
+        }
       } else {
         setError(result.msg || "Error desconocido"); // Maneja un mensaje de error genérico
       }
