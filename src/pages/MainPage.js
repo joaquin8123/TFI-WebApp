@@ -29,6 +29,18 @@ const MainPage = () => {
   const [excludedDates, setExcludedDates] = useState([]);
   const [storesWithDates, setStoresWithDates] = useState({});
 
+  const processExcludedDates = (dates) => {
+    if (!Array.isArray(dates)) {
+      console.error("processExcludedDates recibió:", dates);
+      return [];
+    }
+    return dates.map((dateStr) => {
+      const date = new Date(dateStr);
+      date.setHours(0, 0, 0, 0);
+      return date;
+    });
+  };
+
   const loadBuenosAiresStores = async () => {
     try {
       const buenosAires = await getCityByName("Buenos Aires");
@@ -43,11 +55,9 @@ const MainPage = () => {
                 store.id,
                 store.serviceId
               );
-              const excludedDates = occupiedDaysResponse.days.map((dateStr) => {
-                const date = new Date(dateStr);
-                date.setHours(0, 0, 0, 0);
-                return date;
-              });
+              const excludedDates = processExcludedDates(
+                occupiedDaysResponse.days
+              );
               storesOccupiedDates[store.id] = excludedDates;
             } catch (error) {
               console.error(
@@ -70,114 +80,121 @@ const MainPage = () => {
   useEffect(() => {
     loadBuenosAiresStores();
   }, []);
-
   const handleSearch = async () => {
-    const location = await getCityByName(locationInput);
-    if (location) {
-      const { latitude, longitude, id: cityId } = location;
-      setViewport({
-        latitude,
-        longitude,
-        zoom: 13,
-      });
-      const stores = await getStoreByCityId(cityId);
-
-      const storesOccupiedDates = {};
-      await Promise.all(
-        stores.map(async (store) => {
-          try {
-            const occupiedDaysResponse = await getOccupiedDays(
-              store.store_id,
-              store.serviceId
-            );
-            const excludedDates = occupiedDaysResponse.days.map((dateStr) => {
-              const date = new Date(dateStr);
-              date.setHours(0, 0, 0, 0);
-              return date;
-            });
-            storesOccupiedDates[store.store_id] = excludedDates;
-          } catch (error) {
-            console.error(
-              `Error al obtener días ocupados para store ${store.store_id}:`,
-              error
-            );
-            storesOccupiedDates[store.store_id] = [];
-          }
-        })
-      );
-
-      setStoresWithDates(storesOccupiedDates);
-      setStore(stores);
-    } else {
-      alert("No hay información disponible para esta localidad");
-    }
-  };
-
-  const handleReserve = (store) => {
-    setSelectedShop(store);
-    setShowReservation(true);
-    const storeDates = storesWithDates[store.store_id] || [];
-    setExcludedDates(storeDates);
-  };
-
-  const handleCreateReservation = async () => {
-    if (selectedDate && selectedShop) {
-      try {
-        const userId = localStorage.getItem("userId");
-        const reservationData = {
-          userId: parseInt(userId),
-          storeId: selectedShop.id,
-          serviceId: selectedShop.serviceId,
-          date: selectedDate.toISOString(),
-          status: "PENDING",
-        };
-        await createReservation(reservationData);
-        toast.success("¡Reserva creada exitosamente!", {
-          position: "top-right",
-          autoClose: 3000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
+    try {
+      const location = await getCityByName(locationInput);
+      if (location) {
+        const { latitude, longitude, id: cityId } = location;
+        setViewport({
+          latitude,
+          longitude,
+          zoom: 13,
         });
-        setShowReservation(false);
-        setSelectedDate(null);
+        const stores = await getStoreByCityId(cityId);
 
-        // Actualizar las fechas ocupadas
-        const occupiedDaysResponse = await getOccupiedDays(
-          selectedShop.store_id,
-          selectedShop.serviceId
+        const storesOccupiedDates = {};
+        await Promise.all(
+          stores.map(async (store) => {
+            try {
+              const occupiedDaysResponse = await getOccupiedDays(
+                store.store_id,
+                store.serviceId
+              );
+
+              const excludedDates = processExcludedDates(
+                occupiedDaysResponse.days
+              );
+              storesOccupiedDates[store.store_id] = excludedDates;
+            } catch (error) {
+              console.error(
+                `Error al obtener días ocupados para store ${store.store_id}:`,
+                error
+              );
+              storesOccupiedDates[store.store_id] = [];
+            }
+          })
         );
-        const newExcludedDates = occupiedDaysResponse.days.map((dateStr) => {
-          const date = new Date(dateStr);
-          date.setHours(0, 0, 0, 0);
-          return date;
-        });
-        setExcludedDates(newExcludedDates);
-      } catch (error) {
-        console.error("Error al crear la reserva:", error);
-        toast.error(
-          "Error al crear la reserva. Por favor, intente nuevamente.",
-          {
-            position: "top-right",
-            autoClose: 3000,
-            hideProgressBar: false,
-            closeOnClick: true,
-            pauseOnHover: true,
-            draggable: true,
-          }
-        );
+
+        setStoresWithDates(storesOccupiedDates);
+        setStore(stores);
+      } else {
+        toast.error("No hay información disponible para esta localidad");
       }
-    } else {
-      toast.warning("Por favor, seleccione una fecha válida.", {
-        position: "top-right",
-        autoClose: 3000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-      });
+    } catch (error) {
+      console.error("Error en la búsqueda:", error);
+      toast.error("Error al buscar la localidad");
     }
+  };
+
+  const handleReserve = async (store) => {
+    try {
+      setSelectedShop(store);
+      setShowReservation(true);
+
+      let storeDates = storesWithDates[store.store_id] || [];
+
+      if (storeDates.length === 0) {
+        const occupiedDaysResponse = await getOccupiedDays(
+          store.store_id,
+          store.serviceId
+        );
+
+        storeDates = processExcludedDates(occupiedDaysResponse.days);
+        setStoresWithDates((prev) => ({
+          ...prev,
+          [store.store_id]: storeDates,
+        }));
+      }
+      setExcludedDates(storeDates);
+    } catch (error) {
+      console.error("Error al obtener días ocupados:", error);
+      toast.error("Error al cargar las fechas disponibles");
+    }
+  };
+  const handleCreateReservation = async () => {
+    if (!selectedDate || !selectedShop) {
+      toast.warning("Por favor, seleccione una fecha válida.");
+      return;
+    }
+
+    try {
+      const userId = localStorage.getItem("userId");
+      const reservationData = {
+        userId: parseInt(userId),
+        storeId: selectedShop.id,
+        serviceId: selectedShop.serviceId,
+        date: selectedDate.toISOString(),
+        status: "pending",
+      };
+
+      await createReservation(reservationData);
+      toast.success("¡Reserva creada exitosamente!");
+
+      const occupiedDaysResponse = await getOccupiedDays(
+        selectedShop.store_id,
+        selectedShop.serviceId
+      );
+      const newExcludedDates = processExcludedDates(occupiedDaysResponse.days);
+
+      setExcludedDates(newExcludedDates);
+      setStoresWithDates((prev) => ({
+        ...prev,
+        [selectedShop.store_id]: newExcludedDates,
+      }));
+
+      setShowReservation(false);
+      setSelectedDate(null);
+    } catch (error) {
+      console.error("Error al crear la reserva:", error);
+      toast.error("Error al crear la reserva. Por favor, intente nuevamente.");
+    }
+  };
+
+  const isDateExcluded = (date) => {
+    if (!date || !Array.isArray(excludedDates)) return false;
+    return excludedDates.some(
+      (excludedDate) => date.getTime() === excludedDate.getTime()
+    );
   };
 
   return (
@@ -236,8 +253,7 @@ const MainPage = () => {
               </div>
             ))}
           </div>
-        </div>
-
+        </div>{" "}
         <div className="w-3/4 relative">
           <Map
             {...viewport}
@@ -307,8 +323,8 @@ const MainPage = () => {
                   excludeDates={excludedDates}
                   placeholderText="Seleccione una fecha"
                   dateFormat="dd/MM/yyyy"
-                  showTimeSelect={false}
-                  isClearable={true}
+                  inline
+                  filterDate={(date) => !isDateExcluded(date)}
                 />
                 <div className="flex justify-end space-x-4">
                   <button

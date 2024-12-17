@@ -6,6 +6,7 @@ import { getServicesByUserId } from "../service/userService";
 import { createReview } from "../service/reviewService";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import io from "socket.io-client";
 
 const MyServicesPage = () => {
   const [services, setServices] = useState([]);
@@ -35,6 +36,13 @@ const MyServicesPage = () => {
     };
 
     fetchServices();
+  }, []);
+
+  useEffect(() => {
+    const socket = io("http://localhost:3002");
+    socket.on("SERVICE_STATUS_CHANGE", (reservationUpdated) => {
+      return;
+    });
   }, []);
 
   const handleRateService = async (storeId, serviceId, rating) => {
